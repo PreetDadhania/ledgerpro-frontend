@@ -1,0 +1,26 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f0f2f8; min-height: 100vh; }
+#root { min-height: 100vh; }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+::-webkit-scrollbar-thumb { background: #c7d0e8; border-radius: 10px; }
+
+@keyframes popIn { from{opacity:0;transform:scale(0.94) translateY(12px)} to{opacity:1;transform:scale(1) translateY(0)} }
+@keyframes slideUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+@keyframes slideInRight { from{opacity:0;transform:translateX(40px)} to{opacity:1;transform:translateX(0)} }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: #3b6ef5 !important;
+  box-shadow: 0 0 0 3px rgba(59,110,245,0.18) !important;
+}
+button, a { touch-action: manipulation; cursor: pointer; }
+.truncate { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.mobile-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.mobile-scroll::-webkit-scrollbar { display:none; }
