@@ -1,17 +1,18 @@
 import axios from 'axios';
 
+// ── Use VITE_API_URL in production, fallback to /api in development ──
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api'
+  baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
-// Attach JWT token to every request
+// ── Attach JWT token to every request ───────────────────────────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('lp_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Auto-logout on 401
+// ── Auto-logout on 401 ───────────────────────────────────────────────
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -24,18 +25,18 @@ api.interceptors.response.use(
   }
 );
 
-// ── Auth ─────────────────────────────────────────────────────────
+// ── Auth ─────────────────────────────────────────────────────────────
 export const authAPI = {
-  register:           (data) => api.post('/auth/register', data),
-  login:              (data) => api.post('/auth/login', data),
+  register:           (data)  => api.post('/auth/register', data),
+  login:              (data)  => api.post('/auth/login', data),
   verifyEmail:        (token) => api.get(`/auth/verify-email?token=${token}`),
   resendVerification: (email) => api.post('/auth/resend-verification', { email }),
   forgotPassword:     (email) => api.post('/auth/forgot-password', { email }),
-  resetPassword:      (data) => api.post('/auth/reset-password', data),
-  me:                 ()     => api.get('/auth/me'),
+  resetPassword:      (data)  => api.post('/auth/reset-password', data),
+  me:                 ()      => api.get('/auth/me'),
 };
 
-// ── Customers ────────────────────────────────────────────────────
+// ── Customers ────────────────────────────────────────────────────────
 export const customerAPI = {
   list:   ()         => api.get('/customers'),
   create: (data)     => api.post('/customers', data),
@@ -44,14 +45,14 @@ export const customerAPI = {
   detail: (id)       => api.get(`/customers/${id}/detail`),
 };
 
-// ── Transactions ─────────────────────────────────────────────────
+// ── Transactions ─────────────────────────────────────────────────────
 export const txnAPI = {
   create: (data)     => api.post('/transactions', data),
   update: (id, data) => api.put(`/transactions/${id}`, data),
   delete: (id)       => api.delete(`/transactions/${id}`),
 };
 
-// ── Payments ─────────────────────────────────────────────────────
+// ── Payments ─────────────────────────────────────────────────────────
 export const paymentAPI = {
   create: (data)     => api.post('/payments', data),
   update: (id, data) => api.put(`/payments/${id}`, data),
