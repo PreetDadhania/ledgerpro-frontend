@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { authAPI, customerAPI, txnAPI, paymentAPI } from './api.js';
 import { fmt, fmtDate, todayStr, txnTotal, exportCSV, downloadExcel, downloadPDF } from './utils.js';
 
@@ -239,13 +239,44 @@ function AuthLayout({ children, title, subtitle }) {
   );
 }
 
+
+
+// ── PASSWORD INPUT with show/hide toggle ──
+function PasswordInput({ value, onChange, placeholder = 'Password', autoFocus }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position:'relative' }}>
+      <input
+        style={{ ...IS, paddingRight:44 }}
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        autoComplete="current-password"
+      />
+      <button
+        type="button"
+        onClick={() => setShow(v => !v)}
+        style={{
+          position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
+          background:'none', border:'none', cursor:'pointer', padding:4,
+          color:C.light, fontSize:16, display:'flex', alignItems:'center',
+        }}
+        title={show ? 'Hide password' : 'Show password'}
+      >
+        {show ? '🙈' : '👁️'}
+      </button>
+    </div>
+  );
+}
+
 // ── REGISTER PAGE ──
 function RegisterPage() {
   const navigate = useNavigate();
-  const { add: toast } = useToast();
+  const { login } = useAuth();
   const [form, setForm] = useState({ name:'', email:'', password:'', businessName:'' });
   const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState('');
   const [err, setErr] = useState('');
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -253,41 +284,32 @@ function RegisterPage() {
     e.preventDefault(); setErr(''); setLoading(true);
     try {
       const r = await authAPI.register(form);
-      setDone(r.data.message);
+      // Immediately log in — no email verification needed
+      login(r.data.token, r.data.user);
+      navigate('/', { replace: true });
     } catch (ex) {
       setErr(ex.response?.data?.message || 'Registration failed');
     } finally { setLoading(false); }
   };
-
-  if (done) return (
-    <AuthLayout title="Check your email 📬" subtitle="">
-      <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:56, marginBottom:16 }}>✉️</div>
-        <p style={{ color:C.mid, lineHeight:1.7, marginBottom:24, fontSize:15 }}>{done}</p>
-        <p style={{ color:C.light, fontSize:13, marginBottom:20 }}>After clicking the link in the email, you'll be automatically logged in.</p>
-        <Btn variant="ghost" fullWidth onClick={() => navigate('/login')}>Back to Login</Btn>
-      </div>
-    </AuthLayout>
-  );
 
   return (
     <AuthLayout title="Create account" subtitle="Start managing your customer ledger">
       {err && <div style={{ background:'#fee2e2', color:'#991b1b', padding:'10px 14px', borderRadius:9, marginBottom:16, fontSize:13, fontWeight:600 }}>⚠ {err}</div>}
       <form onSubmit={submit}>
         <Field label="Full Name" required>
-          <input style={IS} value={form.name} onChange={set('name')} placeholder="Ramesh Kumar" required />
+          <input style={IS} value={form.name} onChange={set('name')} placeholder="Ragnesh Kumar" required autoFocus />
         </Field>
         <Field label="Email Address" required>
           <input style={IS} type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required />
         </Field>
         <Field label="Password" required>
-          <input style={IS} type="password" value={form.password} onChange={set('password')} placeholder="Min. 6 characters" required />
+          <PasswordInput value={form.password} onChange={set('password')} placeholder="Min. 6 characters" />
         </Field>
         <Field label="Business Name (optional)">
-          <input style={IS} value={form.businessName} onChange={set('businessName')} placeholder="e.g. Ramesh Polymers" />
+          <input style={IS} value={form.businessName} onChange={set('businessName')} placeholder="e.g. Dadhania Polymers" />
         </Field>
         <Btn variant="primary" fullWidth loading={loading} onClick={submit} style={{ marginTop:8, padding:'13px 20px', fontSize:15 }}>
-          Create Account
+          Create Account &amp; Sign In
         </Btn>
       </form>
       <p style={{ textAlign:'center', marginTop:20, color:C.mid, fontSize:14 }}>
@@ -302,28 +324,20 @@ function RegisterPage() {
 function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [form, setForm]         = useState({ email:'', password:'' });
-  const [loading, setLoading]   = useState(false);
-  const [err, setErr]           = useState('');
-  const [notVerified, setNV]    = useState(false);
-  const [resent, setResent]     = useState(false);
+  const [form, setForm]   = useState({ email:'', password:'' });
+  const [loading, setL]   = useState(false);
+  const [err, setErr]     = useState('');
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const submit = async (e) => {
-    e.preventDefault(); setErr(''); setNV(false); setLoading(true);
+    e.preventDefault(); setErr(''); setL(true);
     try {
       const r = await authAPI.login(form);
       login(r.data.token, r.data.user);
       navigate('/', { replace: true });
     } catch (ex) {
-      const d = ex.response?.data;
-      setErr(d?.message || 'Login failed');
-      if (d?.notVerified) setNV(true);
-    } finally { setLoading(false); }
-  };
-
-  const resend = async () => {
-    try { await authAPI.resendVerification(form.email); setResent(true); } catch {}
+      setErr(ex.response?.data?.message || 'Login failed');
+    } finally { setL(false); }
   };
 
   return (
@@ -331,10 +345,6 @@ function LoginPage() {
       {err && (
         <div style={{ background:'#fee2e2', color:'#991b1b', padding:'10px 14px', borderRadius:9, marginBottom:16, fontSize:13, fontWeight:600 }}>
           ⚠ {err}
-          {notVerified && !resent && (
-            <span onClick={resend} style={{ marginLeft:8, color:C.primary, cursor:'pointer', textDecoration:'underline' }}>Resend verification email</span>
-          )}
-          {resent && <span style={{ marginLeft:8, color:C.success }}>✓ Email sent!</span>}
         </div>
       )}
       <form onSubmit={submit}>
@@ -342,12 +352,9 @@ function LoginPage() {
           <input style={IS} type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required autoFocus />
         </Field>
         <Field label="Password" required>
-          <input style={IS} type="password" value={form.password} onChange={set('password')} placeholder="Your password" required />
+          <PasswordInput value={form.password} onChange={set('password')} placeholder="Your password" />
         </Field>
-        <div style={{ textAlign:'right', marginBottom:16, marginTop:-8 }}>
-          <span onClick={() => navigate('/forgot-password')} style={{ fontSize:13, color:C.primary, cursor:'pointer', fontWeight:600 }}>Forgot password?</span>
-        </div>
-        <Btn variant="primary" fullWidth loading={loading} onClick={submit} style={{ padding:'13px 20px', fontSize:15 }}>
+        <Btn variant="primary" fullWidth loading={loading} onClick={submit} style={{ padding:'13px 20px', fontSize:15, marginTop:16 }}>
           Sign In
         </Btn>
       </form>
@@ -359,123 +366,48 @@ function LoginPage() {
   );
 }
 
-// ── VERIFY EMAIL PAGE ──
-function VerifyEmailPage() {
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const { login } = useAuth();
-  const [status, setStatus] = useState('loading');
-  const [message, setMessage] = useState('');
+// ── CHANGE PASSWORD MODAL ──
+function ChangePasswordModal({ onClose, toast }) {
+  const [form, setForm] = useState({ currentPassword:'', newPassword:'', confirmPassword:'' });
+  const [loading, setL] = useState(false);
+  const [err, setErr]   = useState('');
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  useEffect(() => {
-    const token = params.get('token');
-    if (!token) { setStatus('error'); setMessage('Invalid verification link.'); return; }
-    authAPI.verifyEmail(token)
-      .then((r) => {
-        login(r.data.token, r.data.user);
-        setStatus('success');
-        setMessage(r.data.message);
-        setTimeout(() => navigate('/', { replace:true }), 2500);
-      })
-      .catch((ex) => { setStatus('error'); setMessage(ex.response?.data?.message || 'Verification failed.'); });
-  }, []);
-
-  return (
-    <AuthLayout title={status==='loading'?'Verifying...':status==='success'?'Email Verified! ✅':'Verification Failed ❌'} subtitle="">
-      <div style={{ textAlign:'center', padding:'10px 0' }}>
-        {status==='loading' && <><Spinner size={40} /><p style={{ color:C.mid, marginTop:16 }}>Please wait...</p></>}
-        {status==='success' && <><div style={{ fontSize:52 }}>🎉</div><p style={{ color:C.mid, marginTop:12, lineHeight:1.7 }}>{message}</p><p style={{ color:C.light, fontSize:13, marginTop:8 }}>Redirecting you to the dashboard...</p></>}
-        {status==='error'   && <><div style={{ fontSize:52 }}>😔</div><p style={{ color:C.mid, marginTop:12, lineHeight:1.7 }}>{message}</p><Btn variant="primary" onClick={() => navigate('/login')} style={{ marginTop:20 }}>Go to Login</Btn></>}
-      </div>
-    </AuthLayout>
-  );
-}
-
-// ── FORGOT PASSWORD PAGE ──
-function ForgotPasswordPage() {
-  const navigate = useNavigate();
-  const [email, setEmail]   = useState('');
-  const [loading, setL]     = useState(false);
-  const [msg, setMsg]       = useState('');
-  const [err, setErr]       = useState('');
-
-  const submit = async (e) => {
-    e.preventDefault(); setErr(''); setL(true);
-    try { const r = await authAPI.forgotPassword(email); setMsg(r.data.message); }
-    catch (ex) { setErr(ex.response?.data?.message || 'Failed'); }
-    finally { setL(false); }
-  };
-
-  if (msg) return (
-    <AuthLayout title="Email sent! 📬" subtitle="">
-      <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:52, marginBottom:12 }}>✉️</div>
-        <p style={{ color:C.mid, lineHeight:1.7, marginBottom:24 }}>{msg}</p>
-        <Btn variant="ghost" fullWidth onClick={() => navigate('/login')}>Back to Login</Btn>
-      </div>
-    </AuthLayout>
-  );
-
-  return (
-    <AuthLayout title="Forgot password?" subtitle="We'll send a reset link to your email">
-      {err && <div style={{ background:'#fee2e2', color:'#991b1b', padding:'10px 14px', borderRadius:9, marginBottom:16, fontSize:13, fontWeight:600 }}>⚠ {err}</div>}
-      <form onSubmit={submit}>
-        <Field label="Email Address" required>
-          <input style={IS} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required autoFocus />
-        </Field>
-        <Btn variant="primary" fullWidth loading={loading} onClick={submit} style={{ padding:'13px 20px', fontSize:15 }}>Send Reset Link</Btn>
-      </form>
-      <p style={{ textAlign:'center', marginTop:20 }}>
-        <span onClick={() => navigate('/login')} style={{ color:C.primary, fontWeight:700, cursor:'pointer', fontSize:14 }}>← Back to Login</span>
-      </p>
-    </AuthLayout>
-  );
-}
-
-// ── RESET PASSWORD PAGE ──
-function ResetPasswordPage() {
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const [password, setPw] = useState('');
-  const [confirm, setCf]  = useState('');
-  const [loading, setL]   = useState(false);
-  const [msg, setMsg]     = useState('');
-  const [err, setErr]     = useState('');
-
-  const submit = async (e) => {
-    e.preventDefault(); setErr('');
-    if (password !== confirm) { setErr('Passwords do not match'); return; }
+  const submit = async () => {
+    setErr('');
+    if (form.newPassword !== form.confirmPassword) { setErr('New passwords do not match'); return; }
+    if (form.newPassword.length < 6) { setErr('New password must be at least 6 characters'); return; }
     setL(true);
-    try { const r = await authAPI.resetPassword({ token: params.get('token'), password }); setMsg(r.data.message); }
-    catch (ex) { setErr(ex.response?.data?.message || 'Failed'); }
-    finally { setL(false); }
+    try {
+      await authAPI.changePassword({ currentPassword: form.currentPassword, newPassword: form.newPassword });
+      toast('Password changed successfully!');
+      onClose();
+    } catch (ex) {
+      setErr(ex.response?.data?.message || 'Failed to change password');
+    } finally { setL(false); }
   };
 
-  if (msg) return (
-    <AuthLayout title="Password Reset! ✅" subtitle="">
-      <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:52, marginBottom:12 }}>🔑</div>
-        <p style={{ color:C.mid, lineHeight:1.7, marginBottom:24 }}>{msg}</p>
-        <Btn variant="primary" fullWidth onClick={() => navigate('/login')}>Sign In</Btn>
-      </div>
-    </AuthLayout>
-  );
-
   return (
-    <AuthLayout title="Set new password" subtitle="Choose a strong password">
-      {err && <div style={{ background:'#fee2e2', color:'#991b1b', padding:'10px 14px', borderRadius:9, marginBottom:16, fontSize:13, fontWeight:600 }}>⚠ {err}</div>}
-      <form onSubmit={submit}>
-        <Field label="New Password" required>
-          <input style={IS} type="password" value={password} onChange={(e) => setPw(e.target.value)} placeholder="Min. 6 characters" required />
-        </Field>
-        <Field label="Confirm Password" required>
-          <input style={IS} type="password" value={confirm} onChange={(e) => setCf(e.target.value)} placeholder="Repeat password" required />
-        </Field>
-        <Btn variant="primary" fullWidth loading={loading} onClick={submit} style={{ padding:'13px 20px', fontSize:15 }}>Reset Password</Btn>
-      </form>
-    </AuthLayout>
+    <Modal title="🔑 Change Password" onClose={onClose} width={420}>
+      {err && <div style={{ background:'#fee2e2', color:'#991b1b', padding:'10px 14px', borderRadius:9, marginBottom:14, fontSize:13, fontWeight:600 }}>⚠ {err}</div>}
+      <Field label="Current Password" required>
+        <PasswordInput value={form.currentPassword} onChange={set('currentPassword')} placeholder="Your current password" autoFocus />
+      </Field>
+      <Field label="New Password" required>
+        <PasswordInput value={form.newPassword} onChange={set('newPassword')} placeholder="Min. 6 characters" />
+      </Field>
+      <Field label="Confirm New Password" required>
+        <PasswordInput value={form.confirmPassword} onChange={set('confirmPassword')} placeholder="Repeat new password" />
+      </Field>
+      <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:8 }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" loading={loading} onClick={submit}>Change Password</Btn>
+      </div>
+    </Modal>
   );
 }
+
+
 
 /* ═══════════════════════════════════════════════════
    MODALS — Transaction / Payment / Customer
@@ -621,8 +553,11 @@ function Navbar({ title, subtitle, backTo, actions, mobileActions }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showChangePw, setShowChangePw] = useState(false);
+  const { toasts, add: toast } = useToast();
 
   return (
+    <>
     <nav style={{ background:C.nav, position:'sticky', top:0, zIndex:200, boxShadow:'0 2px 20px rgba(0,0,0,0.4)' }}>
       <div style={{ maxWidth:1200, margin:'0 auto', padding:isMobile?'12px 14px':'0 24px', display:'flex', alignItems:'center', gap:12, minHeight:isMobile?'auto':64, flexWrap:'nowrap' }}>
         {backTo ? (
@@ -630,7 +565,7 @@ function Navbar({ title, subtitle, backTo, actions, mobileActions }) {
         ) : (
           <div style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }} onClick={() => navigate('/')}>
             <div style={{ width:36, height:36, background:'linear-gradient(135deg,#3b6ef5,#7c3aed)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>📒</div>
-            {!isMobile && <div><div style={{ fontSize:17, fontWeight:800, color:'#f1f5f9', lineHeight:1, letterSpacing:'-0.02em' }}>Kharcha App</div><div style={{ fontSize:11, color:'#475569' }}>Ledger Manager</div></div>}
+            {!isMobile && <div><div style={{ fontSize:17, fontWeight:800, color:'#f1f5f9', lineHeight:1, letterSpacing:'-0.02em' }}>LedgerPro</div><div style={{ fontSize:11, color:'#475569' }}>Ledger Manager</div></div>}
           </div>
         )}
         <div style={{ flex:1, minWidth:0 }}>
@@ -641,17 +576,31 @@ function Navbar({ title, subtitle, backTo, actions, mobileActions }) {
           {!isMobile && actions}
           {/* User menu */}
           <div style={{ position:'relative' }}>
-            <button onClick={() => setShowUserMenu(v=>!v)} style={{ background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:9, color:'#cbd5e1', padding:'7px 12px', cursor:'pointer', fontWeight:600, fontSize:13, fontFamily:"'Plus Jakarta Sans',sans-serif", display:'flex', alignItems:'center', gap:6 }}>
+            <button
+              onClick={() => setShowUserMenu(v=>!v)}
+              style={{ background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:9, color:'#cbd5e1', padding:'7px 12px', cursor:'pointer', fontWeight:600, fontSize:13, fontFamily:"'Plus Jakarta Sans',sans-serif", display:'flex', alignItems:'center', gap:6 }}>
               👤 {!isMobile && (user?.name?.split(' ')[0] || 'Me')}
             </button>
             {showUserMenu && (
-              <div style={{ position:'absolute', right:0, top:'calc(100% + 6px)', background:'#fff', borderRadius:12, boxShadow:'0 8px 30px rgba(0,0,0,0.18)', border:`1px solid ${C.border}`, minWidth:180, zIndex:300, overflow:'hidden', animation:'popIn 0.15s ease' }}>
+              <div
+                style={{ position:'absolute', right:0, top:'calc(100% + 6px)', background:'#fff', borderRadius:12, boxShadow:'0 8px 30px rgba(0,0,0,0.18)', border:`1px solid ${C.border}`, minWidth:200, zIndex:300, overflow:'hidden', animation:'popIn 0.15s ease' }}
+                onClick={() => setShowUserMenu(false)}>
+                {/* User info */}
                 <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.border}` }}>
                   <div style={{ fontWeight:700, fontSize:14, color:C.text }}>{user?.name}</div>
                   <div style={{ fontSize:12, color:C.light, marginTop:2 }}>{user?.email}</div>
                   {user?.businessName && <div style={{ fontSize:12, color:C.mid, marginTop:1 }}>🏢 {user.businessName}</div>}
                 </div>
-                <button onClick={() => { logout(); navigate('/login'); }} style={{ width:'100%', background:'none', border:'none', padding:'12px 16px', textAlign:'left', cursor:'pointer', color:C.danger, fontWeight:600, fontSize:14, fontFamily:"'Plus Jakarta Sans',sans-serif", display:'flex', alignItems:'center', gap:8 }}>
+                {/* Change Password */}
+                <button
+                  onClick={() => { setShowUserMenu(false); setShowChangePw(true); }}
+                  style={{ width:'100%', background:'none', border:'none', borderBottom:`1px solid ${C.border}`, padding:'11px 16px', textAlign:'left', cursor:'pointer', color:C.text, fontWeight:600, fontSize:13, fontFamily:"'Plus Jakarta Sans',sans-serif", display:'flex', alignItems:'center', gap:8 }}>
+                  🔑 Change Password
+                </button>
+                {/* Logout */}
+                <button
+                  onClick={() => { setShowUserMenu(false); logout(); navigate('/login'); }}
+                  style={{ width:'100%', background:'none', border:'none', padding:'11px 16px', textAlign:'left', cursor:'pointer', color:C.danger, fontWeight:600, fontSize:13, fontFamily:"'Plus Jakarta Sans',sans-serif", display:'flex', alignItems:'center', gap:8 }}>
                   🚪 Logout
                 </button>
               </div>
@@ -666,6 +615,15 @@ function Navbar({ title, subtitle, backTo, actions, mobileActions }) {
         </div>
       )}
     </nav>
+    {/* Change Password Modal */}
+    {showChangePw && (
+      <ChangePasswordModal
+        onClose={() => setShowChangePw(false)}
+        toast={toast}
+      />
+    )}
+    <Toast toasts={toasts} />
+    </>
   );
 }
 
@@ -1061,11 +1019,8 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/login"           element={<LoginPage />} />
-        <Route path="/register"        element={<RegisterPage />} />
-        <Route path="/verify-email"    element={<VerifyEmailPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password"  element={<ResetPasswordPage />} />
+        <Route path="/login"    element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/customer/:id" element={<ProtectedRoute><CustomerDetailPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
